@@ -28,6 +28,9 @@
     "onLanguage:jsonc",
     "onLanguage:yaml"
   ],
+  "dependencies": {
+    "typescript": "^5.9.3"
+  },
   "devDependencies": {
     "@types/node": "^22.7.5",
     "@types/vscode": "^1.92.0",

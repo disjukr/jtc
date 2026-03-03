@@ -2,18 +2,23 @@ import { fromFileUrl, join } from "@std/path";
 
 await emptyDir("./dist");
 const denoBundleCommand = new Deno.Command(Deno.execPath(), {
+  stdout: "inherit",
+  stderr: "inherit",
   // deno-fmt-ignore
   args: [
     "bundle",
     "--format", "cjs",
     "--platform", "browser",
     "--external", "vscode",
-    "--unstable-raw-imports",
+    "--external", "typescript",
     "-o", "dist/main.js",
     "src/main.ts",
   ],
 });
-await denoBundleCommand.output();
+const status = await denoBundleCommand.output();
+if (!status.success) {
+  throw new Error("deno bundle failed");
+}
 
 async function emptyDir(dir: string | URL) {
   try {

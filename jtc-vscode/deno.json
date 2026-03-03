@@ -1,6 +1,9 @@
 {
   "imports": {
     "@std/path": "jsr:@std/path@1",
-    "vscode": "npm:@types/vscode"
+    "jsonc-parser": "npm:jsonc-parser@3",
+    "typescript": "npm:typescript@5",
+    "vscode": "npm:@types/vscode",
+    "yaml": "npm:yaml@2"
   }
 }

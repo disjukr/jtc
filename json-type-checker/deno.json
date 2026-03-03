@@ -2,6 +2,13 @@
   "name": "@disjukr/jtc",
   "version": "0.0.0",
   "license": "MIT",
+  "exports": {
+    "./check": "./src/check.ts",
+    "./json": "./src/json.ts",
+    "./rough-json": "./src/rough-json.ts",
+    "./type": "./src/type.ts",
+    "./yaml": "./src/yaml.ts"
+  },
   "imports": {
     "@cliffy/command": "jsr:@cliffy/command@1.0.0-rc.7",
     "@std/fs": "jsr:@std/fs@1",
