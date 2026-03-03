@@ -1,4 +1,4 @@
-![JTC Logo](./images/logo-with-text.png)
+![JTC Logo](https://raw.githubusercontent.com/disjukr/jtc/main/images/logo-with-text.png)
 
 # JTC (JSON/YAML Type Checker)
 
@@ -15,7 +15,7 @@ JTC validates `json`, `jsonc`, and `yaml` documents against TypeScript types usi
 
 ## Example
 
-![VSCode Demo](./images/vscode-demo.png)
+![VSCode Demo](https://raw.githubusercontent.com/disjukr/jtc/main/images/vscode-demo.png)
 
 ```json
 {
