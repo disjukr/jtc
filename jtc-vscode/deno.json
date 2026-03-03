@@ -1,5 +1,6 @@
 {
   "imports": {
+    "@std/path": "jsr:@std/path@1",
     "vscode": "npm:@types/vscode"
   }
 }
