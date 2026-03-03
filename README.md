@@ -1,5 +1,8 @@
 ![JTC Logo](./jtc-vscode/images/logo-with-text.png)
 
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/disjukr.json-type-checker?label=VS%20Code%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=disjukr.json-type-checker)
+[![Open VSX](https://img.shields.io/open-vsx/v/disjukr/json-type-checker?label=Open%20VSX)](https://open-vsx.org/extension/disjukr/json-type-checker)
+
 # JTC (JSON/YAML Type Checker)
 
 JTC validates `json`, `jsonc`, and `yaml` documents against TypeScript types using a `$type` field.
