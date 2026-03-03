@@ -5,6 +5,7 @@
   "version": "0.0.0",
   "publisher": "disjukr",
   "license": "(MIT OR Apache-2.0)",
+  "icon": "images/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/disjukr/jtc.git"

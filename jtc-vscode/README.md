@@ -1,4 +1,4 @@
-![JTC Logo](./jtc-vscode/images/logo-with-text.png)
+![JTC Logo](./images/logo-with-text.png)
 
 # JTC (JSON/YAML Type Checker)
 
@@ -15,7 +15,7 @@ JTC validates `json`, `jsonc`, and `yaml` documents against TypeScript types usi
 
 ## Example
 
-![VSCode Demo](./jtc-vscode/images/vscode-demo.png)
+![VSCode Demo](./images/vscode-demo.png)
 
 ```json
 {
@@ -35,33 +35,3 @@ export interface User {
 ```
 
 If a value has the wrong type, JTC reports a diagnostic at the corresponding JSON/YAML path.
-
-## Monorepo Structure
-
-- `json-type-checker`: core library (`@disjukr/jtc`)
-- `jtc-vscode`: VS Code extension
-
-## Development
-
-Prerequisites:
-
-- Deno
-- VS Code (or compatible)
-
-Build extension bundle:
-
-```bash
-cd jtc-vscode
-deno task build
-```
-
-Watch mode:
-
-```bash
-cd jtc-vscode
-deno task watch
-```
-
-Run extension dev host:
-
-- Use the `Extension` launch configuration from `.vscode/launch.json`.
