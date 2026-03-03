@@ -1,0 +1,65 @@
+name: Publish VS Code Extension
+
+on:
+  push:
+    tags:
+      - "jtc-vscode@*.*.*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Install dependencies
+        run: deno install
+
+      - name: Apply version from tag
+        working-directory: jtc-vscode
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: |
+          deno run -A - <<'EOF'
+          const tagName = Deno.env.get("GITHUB_REF_NAME") || "";
+          const match = tagName.match(/^jtc-vscode@(.+)$/);
+          if (!match) {
+            throw new Error(`Unexpected tag format: ${tagName}`);
+          }
+          const packageJsonPath = "package.json";
+          const packageJsonText = await Deno.readTextFile(packageJsonPath);
+          const packageJson = JSON.parse(packageJsonText);
+          packageJson.version = match[1];
+          await Deno.writeTextFile(
+            packageJsonPath,
+            `${JSON.stringify(packageJson, null, 2)}\n`,
+          );
+          console.log(`Applied version ${match[1]} to ${packageJsonPath}`);
+          EOF
+
+      - name: Build extension
+        working-directory: jtc-vscode
+        run: deno task build
+
+      - name: Publish to Open VSX
+        id: publish_openvsx
+        uses: HaaLeo/publish-vscode-extension@v2
+        with:
+          pat: ${{ secrets.OPEN_VSX_TOKEN }}
+          packagePath: ./jtc-vscode
+          dependencies: false
+          skipDuplicate: true
+
+      - name: Publish to VS Marketplace
+        uses: HaaLeo/publish-vscode-extension@v2
+        with:
+          pat: ${{ secrets.VS_MARKETPLACE_TOKEN }}
+          registryUrl: https://marketplace.visualstudio.com
+          extensionFile: ${{ steps.publish_openvsx.outputs.vsixPath }}
+          dependencies: false
+          skipDuplicate: true
