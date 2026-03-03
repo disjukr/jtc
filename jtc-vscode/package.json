@@ -1,0 +1,37 @@
+{
+  "name": "json-type-checker",
+  "displayName": "JTC - JSON/YAML Type Checker",
+  "description": "JSON/YAML Type Checker",
+  "version": "0.0.0",
+  "publisher": "disjukr",
+  "license": "(MIT OR Apache-2.0)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/disjukr/jtc.git"
+  },
+  "scripts": {
+    "watch": "chokidar 'src/**/*.ts' -c 'deno task build'",
+    "build": "deno run -A ./scripts/build.ts"
+  },
+  "engines": {
+    "vscode": "^1.92.0"
+  },
+  "categories": [
+    "Debuggers",
+    "Testing",
+    "Linters"
+  ],
+  "main": "./dist/main",
+  "browser": "./dist/main",
+  "activationEvents": [
+    "onLanguage:json",
+    "onLanguage:jsonc",
+    "onLanguage:yaml"
+  ],
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "@types/vscode": "^1.92.0",
+    "@vscode/vsce": "^3.1.1",
+    "chokidar-cli": "^3.0.0"
+  }
+}
