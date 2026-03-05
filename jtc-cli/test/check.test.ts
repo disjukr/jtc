@@ -18,6 +18,15 @@ Deno.test("jtc check exits with 1 and reports diagnostics for invalid document",
   assertStringIncludes(stderr, "$.age");
 });
 
+Deno.test("jtc check prints a user-facing error for malformed json", async () => {
+  const result = await runCheck(join(FIXTURES_DIR, "invalid-syntax.json"));
+  const stderr = new TextDecoder().decode(result.stderr);
+
+  assertEquals(result.code, 1);
+  assertStringIncludes(stderr, "jtc:");
+  assertStringIncludes(stderr, "at 52");
+});
+
 async function runCheck(filePath: string): Promise<Deno.CommandOutput> {
   const command = new Deno.Command(Deno.execPath(), {
     cwd: CLI_ROOT,

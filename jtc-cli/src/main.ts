@@ -31,7 +31,14 @@ const command = new Command()
   .version(CLI_VERSION)
   .description("JSON/YAML type checker")
   .command("check <file:string>", "Type-check a json/jsonc/yaml document")
-  .action((_, filePath: string) => runCheck(filePath));
+  .action(async (_, filePath: string) => {
+    try {
+      await runCheck(filePath);
+    } catch (error) {
+      console.error(formatCliError(error));
+      Deno.exit(1);
+    }
+  });
 
 if (import.meta.main) {
   const args = Deno.args.length === 0 ? ["--help"] : Deno.args;
@@ -121,23 +128,17 @@ function printDiagnostic(
   diagnostic: ts.Diagnostic,
 ): void {
   const path = diagnosticToPath(diagnostic);
-  const span = path ? pathToSpan(path) : findDiagnosticSpan(diagnostic);
-  const { line, column } = offsetToLineColumn(text, span?.start ?? 0);
   const code = `TS${diagnostic.code}`;
   const category = diagnosticCategoryName(diagnostic.category);
   const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
   const pathText = path ? ` ${formatPath(path)}` : "";
-  console.error(`${filePath}:${line}:${column} ${category} ${code}: ${message}${pathText}`);
-}
-
-function findDiagnosticSpan(diagnostic: ts.Diagnostic): Span | null {
-  if (!diagnostic.file || diagnostic.start == null || diagnostic.length == null) {
-    return null;
+  if (path) {
+    const span = pathToSpan(path);
+    const { line, column } = offsetToLineColumn(text, span.start);
+    console.error(`${filePath}:${line}:${column} ${category} ${code}: ${message}${pathText}`);
+    return;
   }
-  return {
-    start: diagnostic.start,
-    end: diagnostic.start + diagnostic.length,
-  };
+  console.error(`${filePath} ${category} ${code}: ${message}`);
 }
 
 function offsetToLineColumn(
@@ -195,4 +196,9 @@ function formatJsonParseErrors(
   return errors.map((item) => {
     return `${printParseErrorCode(item.error)} at ${item.offset}`;
   }).join("\n");
+}
+
+function formatCliError(error: unknown): string {
+  if (error instanceof Error) return `jtc: ${error.message}`;
+  return `jtc: ${String(error)}`;
 }
