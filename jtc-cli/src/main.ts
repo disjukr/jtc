@@ -5,6 +5,7 @@ import ts from "typescript";
 import { parseDocument as parseYamlDocument } from "yaml";
 import denoConfig from "../deno.json" with { type: "json" };
 import { check, diagnosticToPath } from "../../json-type-checker/src/check.ts";
+import { runLsp } from "./lsp.ts";
 import {
   jsonTextToRoughJson,
   pathToSpan as jsonPathToSpan,
@@ -29,11 +30,24 @@ const CLI_VERSION = typeof denoConfig.version === "string" &&
 const command = new Command()
   .name("jtc")
   .version(CLI_VERSION)
-  .description("JSON/YAML type checker")
+  .description("JSON/YAML type checker");
+
+command
   .command("check <file:string>", "Type-check a json/jsonc/yaml document")
   .action(async (_, filePath: string) => {
     try {
       await runCheck(filePath);
+    } catch (error) {
+      console.error(formatCliError(error));
+      Deno.exit(1);
+    }
+  });
+
+command
+  .command("lsp", "Run JTC language server over stdio")
+  .action(async () => {
+    try {
+      await runLsp();
     } catch (error) {
       console.error(formatCliError(error));
       Deno.exit(1);
