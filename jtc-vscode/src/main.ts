@@ -1,23 +1,19 @@
 import { dirname, extname, join, normalize } from "@std/path/posix";
-import { parseTree } from "jsonc-parser";
 import ts from "typescript";
 import * as vscode from "vscode";
-import { parseDocument as parseYamlDocument } from "yaml";
 import {
   check,
   type CheckFileSystem,
-  diagnosticToPath,
 } from "@disjukr/jtc/check";
 import {
-  jsonTextToRoughJson,
-  pathToSpan as jsonPathToSpan,
-} from "@disjukr/jtc/json";
-import type { RoughJson } from "@disjukr/jtc/rough-json";
-import type { Path, Span } from "@disjukr/jtc/type";
-import {
-  pathToSpan as yamlPathToSpan,
-  yamlDocumentToRoughJson,
-} from "@disjukr/jtc/yaml";
+  getTypePath,
+  isSupportedLanguage,
+  mapDocumentDiagnostics,
+  omitTypeField,
+  parseDocumentContext,
+  type DocumentDiagnostic,
+} from "@disjukr/jtc/document";
+import type { Span } from "@disjukr/jtc/type";
 
 const DIAGNOSTIC_SOURCE = "jtc";
 const TS_EXTENSIONS = [".ts", ".tsx", ".d.ts", ".mts", ".cts"];
@@ -68,8 +64,8 @@ async function buildDiagnostics(
   document: vscode.TextDocument,
 ): Promise<vscode.Diagnostic[]> {
   try {
-    const context = parseDocumentContext(document);
-    if (!context) return [];
+    if (!isSupportedLanguage(document.languageId)) return [];
+    const context = parseDocumentContext(document.languageId, document.getText());
 
     const typePath = getTypePath(context.roughJson);
     if (!typePath) return [];
@@ -83,18 +79,13 @@ async function buildDiagnostics(
       preferFileSystemOnly: true,
     });
 
-    return tsDiagnostics.map((diagnostic) =>
-      toVsCodeDiagnostic(diagnostic, document, context.pathToSpan)
+    return mapDocumentDiagnostics(tsDiagnostics, context.pathToSpan).map((diagnostic) =>
+      toVsCodeDiagnostic(diagnostic, document)
     );
   } catch (err) {
     return [toInternalErrorDiagnostic(document, err)];
   }
 }
-
-type ParsedDocumentContext = {
-  roughJson: RoughJson;
-  pathToSpan: (path: Path) => Span;
-};
 
 type CheckRunOptions = {
   typePath: string;
@@ -102,52 +93,6 @@ type CheckRunOptions = {
   fs?: CheckFileSystem;
   compilerOptions?: ts.CompilerOptions;
 };
-
-function parseDocumentContext(
-  document: vscode.TextDocument,
-): ParsedDocumentContext | null {
-  const text = document.getText();
-
-  if (document.languageId === "json" || document.languageId === "jsonc") {
-    const root = parseTree(text);
-    const roughJson = jsonTextToRoughJson(text);
-    return {
-      roughJson,
-      pathToSpan: (path) => {
-        if (!root) return { start: 0, end: 0 };
-        return jsonPathToSpan(root, path);
-      },
-    };
-  }
-
-  if (document.languageId === "yaml") {
-    const yamlDocument = parseYamlDocument(text, { keepSourceTokens: true });
-    const roughJson = yamlDocumentToRoughJson(yamlDocument);
-    return {
-      roughJson,
-      pathToSpan: (path) => yamlPathToSpan(yamlDocument, path),
-    };
-  }
-
-  return null;
-}
-
-function getTypePath(roughJson: RoughJson): string | null {
-  if (roughJson.type !== "object") return null;
-  const typeField = roughJson.items.findLast((item) =>
-    item.key.value === "$type"
-  );
-  if (!typeField || typeField.value.type !== "string") return null;
-  return typeField.value.value;
-}
-
-function omitTypeField(roughJson: RoughJson): RoughJson {
-  if (roughJson.type !== "object") return roughJson;
-  return {
-    type: "object",
-    items: roughJson.items.filter((item) => item.key.value !== "$type"),
-  };
-}
 
 async function createCheckOptions(
   document: vscode.TextDocument,
@@ -410,18 +355,16 @@ function hasUriScheme(text: string): boolean {
 }
 
 function toVsCodeDiagnostic(
-  diagnostic: ts.Diagnostic,
+  diagnostic: DocumentDiagnostic,
   document: vscode.TextDocument,
-  pathToSpan: (path: Path) => Span,
 ): vscode.Diagnostic {
-  const path = diagnosticToPath(diagnostic);
-  const range = path
-    ? spanToRange(document, pathToSpan(path))
+  const range = diagnostic.span
+    ? spanToRange(document, diagnostic.span)
     : fullDocumentRange(document);
 
   const result = new vscode.Diagnostic(
     range,
-    ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
+    diagnostic.message,
     toVsCodeSeverity(diagnostic.category),
   );
 
@@ -478,9 +421,4 @@ function toInternalErrorDiagnostic(
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
-}
-
-function isSupportedLanguage(languageId: string): boolean {
-  return languageId === "json" || languageId === "jsonc" ||
-    languageId === "yaml";
 }

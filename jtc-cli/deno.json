@@ -14,8 +14,11 @@
     "@cliffy/command": "jsr:@cliffy/command@1.0.0-rc.7",
     "@std/assert": "jsr:@std/assert@1",
     "@std/path": "jsr:@std/path@1",
+    "@types/node": "npm:@types/node@24",
     "jsonc-parser": "npm:jsonc-parser@3",
     "typescript": "npm:typescript@5",
+    "vscode-languageserver": "npm:vscode-languageserver@9",
+    "vscode-languageserver-protocol": "npm:vscode-languageserver-protocol@3",
     "yaml": "npm:yaml@2"
   }
 }

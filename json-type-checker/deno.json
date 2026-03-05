@@ -4,6 +4,7 @@
   "license": "MIT",
   "exports": {
     "./check": "./src/check.ts",
+    "./document": "./src/document.ts",
     "./json": "./src/json.ts",
     "./rough-json": "./src/rough-json.ts",
     "./type": "./src/type.ts",
