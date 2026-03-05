@@ -1,4 +1,4 @@
 {
   "nodeModulesDir": "auto",
-  "workspace": ["./json-type-checker", "./jtc-vscode"]
+  "workspace": ["./json-type-checker", "./jtc-cli", "./jtc-vscode"]
 }

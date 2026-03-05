@@ -1,0 +1,21 @@
+{
+  "name": "@disjukr/jtc-cli",
+  "version": "0.0.0",
+  "license": "MIT",
+  "exports": {
+    "./main": "./src/main.ts"
+  },
+  "tasks": {
+    "jtc": "deno run --allow-read --allow-env src/main.ts",
+    "install-cli": "deno install --global --config deno.json --allow-read --allow-env --name jtc src/main.ts",
+    "test": "deno test --allow-run --allow-read --allow-env test"
+  },
+  "imports": {
+    "@cliffy/command": "jsr:@cliffy/command@1.0.0-rc.7",
+    "@std/assert": "jsr:@std/assert@1",
+    "@std/path": "jsr:@std/path@1",
+    "jsonc-parser": "npm:jsonc-parser@3",
+    "typescript": "npm:typescript@5",
+    "yaml": "npm:yaml@2"
+  }
+}
