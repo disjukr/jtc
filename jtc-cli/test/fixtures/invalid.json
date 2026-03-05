@@ -1,0 +1,5 @@
+{
+  "$type": "./types.ts#User",
+  "name": "Alice",
+  "age": "20"
+}
