@@ -42,6 +42,7 @@ If a value has the wrong type, JTC reports a diagnostic at the corresponding JSO
 ## Monorepo Structure
 
 - `json-type-checker`: core library (`@disjukr/jtc`)
+- `jtc-cli`: CLI (`jtc`)
 - `jtc-vscode`: VS Code extension
 
 ## Development
@@ -68,3 +69,16 @@ deno task watch
 Run extension dev host:
 
 - Use the `Extension` launch configuration from `.vscode/launch.json`.
+
+Install CLI globally:
+
+```bash
+cd jtc-cli
+deno task install-cli
+```
+
+Use CLI:
+
+```bash
+jtc --help
+```
