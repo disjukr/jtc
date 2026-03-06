@@ -1,0 +1,117 @@
+name: Publish JTC CLI
+
+on:
+  push:
+    tags:
+      - "jtc-cli@*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary_name: jtc
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            binary_name: jtc
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            binary_name: jtc
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            binary_name: jtc
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary_name: jtc.exe
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            binary_name: jtc.exe
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Resolve release version and asset names
+        shell: bash
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ "$TAG_NAME" =~ ^jtc-cli@(.+)$ ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+          else
+            echo "Unexpected tag format: $TAG_NAME"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "zip_name=jtc-${{ matrix.target }}.zip" >> "$GITHUB_OUTPUT"
+          echo "sha_name=jtc-${{ matrix.target }}.zip.sha256sum" >> "$GITHUB_OUTPUT"
+        id: meta
+
+      - name: Apply version from tag
+        working-directory: jtc-cli
+        shell: bash
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          deno run -A - <<'EOF'
+          const version = Deno.env.get("VERSION");
+          if (!version) throw new Error("Missing VERSION");
+          const configPath = "deno.json";
+          const text = await Deno.readTextFile(configPath);
+          const config = JSON.parse(text);
+          config.version = version;
+          await Deno.writeTextFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+          console.log(`Applied version ${version} to ${configPath}`);
+          EOF
+
+      - name: Build CLI binary
+        shell: bash
+        run: deno compile --allow-read --allow-env --target ${{ matrix.target }} --output dist/${{ matrix.binary_name }} jtc-cli/src/main.ts
+
+      - name: Create ZIP package (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: Compress-Archive -Path dist/${{ matrix.binary_name }} -DestinationPath dist/${{ steps.meta.outputs.zip_name }}
+
+      - name: Create ZIP package (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cd dist
+          zip -9 "${{ steps.meta.outputs.zip_name }}" "${{ matrix.binary_name }}"
+
+      - name: Create SHA256 checksum
+        shell: bash
+        run: |
+          deno run -A - <<'EOF'
+          const zipPath = `dist/${Deno.env.get("ZIP_NAME")}`;
+          const bytes = await Deno.readFile(zipPath);
+          const digest = await crypto.subtle.digest("SHA-256", bytes);
+          const hash = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+          const filename = Deno.env.get("ZIP_NAME");
+          if (!filename) throw new Error("Missing ZIP_NAME");
+          await Deno.writeTextFile(`dist/${Deno.env.get("SHA_NAME")}`, `${hash}  ${filename}\n`);
+          EOF
+        env:
+          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+          SHA_NAME: ${{ steps.meta.outputs.sha_name }}
+
+      - name: Attach artifact to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/${{ steps.meta.outputs.zip_name }}
+            dist/${{ steps.meta.outputs.sha_name }}
