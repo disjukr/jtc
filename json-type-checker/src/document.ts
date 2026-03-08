@@ -1,14 +1,20 @@
-import { parseTree, type ParseErrorCode, printParseErrorCode } from "jsonc-parser";
+import {
+  type ParseErrorCode,
+  parseTree,
+  printParseErrorCode,
+} from "jsonc-parser";
 import ts from "typescript";
 import { parseDocument as parseYamlDocument } from "yaml";
 import { diagnosticToPath } from "./check.ts";
 import {
   jsonTextToRoughJson,
+  offsetToPath as jsonOffsetToPath,
   pathToSpan as jsonPathToSpan,
 } from "./json.ts";
 import type { RoughJson } from "./rough-json.ts";
 import type { Path, Span } from "./type.ts";
 import {
+  offsetToPath as yamlOffsetToPath,
   pathToSpan as yamlPathToSpan,
   yamlDocumentToRoughJson,
 } from "./yaml.ts";
@@ -22,6 +28,7 @@ export interface ParseDocumentOptions {
 export interface ParsedDocumentContext {
   roughJson: RoughJson;
   pathToSpan: (path: Path) => Span;
+  offsetToPath: (offset: number) => Path | null;
 }
 
 export interface DocumentDiagnostic {
@@ -32,8 +39,11 @@ export interface DocumentDiagnostic {
   span: Span | null;
 }
 
-export function isSupportedLanguage(languageId: string): languageId is SupportedLanguageId {
-  return languageId === "json" || languageId === "jsonc" || languageId === "yaml";
+export function isSupportedLanguage(
+  languageId: string,
+): languageId is SupportedLanguageId {
+  return languageId === "json" || languageId === "jsonc" ||
+    languageId === "yaml";
 }
 
 export function parseDocumentContext(
@@ -42,7 +52,8 @@ export function parseDocumentContext(
   options: ParseDocumentOptions = {},
 ): ParsedDocumentContext {
   if (languageId === "json" || languageId === "jsonc") {
-    const errors: { error: ParseErrorCode; offset: number; length: number }[] = [];
+    const errors: { error: ParseErrorCode; offset: number; length: number }[] =
+      [];
     const root = parseTree(text, errors);
     if (options.strict && errors.length > 0) {
       throw new Error(formatJsonParseErrors(errors));
@@ -54,6 +65,7 @@ export function parseDocumentContext(
       return {
         roughJson: { type: "null" },
         pathToSpan: () => ({ start: 0, end: 0 }),
+        offsetToPath: () => null,
       };
     }
 
@@ -61,6 +73,7 @@ export function parseDocumentContext(
     return {
       roughJson,
       pathToSpan: (path) => jsonPathToSpan(root, path),
+      offsetToPath: (offset) => jsonOffsetToPath(root, offset),
     };
   }
 
@@ -72,12 +85,15 @@ export function parseDocumentContext(
   return {
     roughJson,
     pathToSpan: (path) => yamlPathToSpan(yamlDocument, path),
+    offsetToPath: (offset) => yamlOffsetToPath(yamlDocument, offset),
   };
 }
 
 export function getTypePath(roughJson: RoughJson): string | null {
   if (roughJson.type !== "object") return null;
-  const typeField = roughJson.items.findLast((item) => item.key.value === "$type");
+  const typeField = roughJson.items.findLast((item) =>
+    item.key.value === "$type"
+  );
   if (!typeField || typeField.value.type !== "string") return null;
   return typeField.value.value;
 }

@@ -1,17 +1,15 @@
 import { dirname, extname, join, normalize } from "@std/path/posix";
 import ts from "typescript";
 import * as vscode from "vscode";
+import { check, type CheckFileSystem } from "@disjukr/jtc/check";
+import { findDefinition } from "@disjukr/jtc/definition";
 import {
-  check,
-  type CheckFileSystem,
-} from "@disjukr/jtc/check";
-import {
+  type DocumentDiagnostic,
   getTypePath,
   isSupportedLanguage,
   mapDocumentDiagnostics,
   omitTypeField,
   parseDocumentContext,
-  type DocumentDiagnostic,
 } from "@disjukr/jtc/document";
 import type { Span } from "@disjukr/jtc/type";
 
@@ -21,6 +19,20 @@ const TS_EXTENSIONS = [".ts", ".tsx", ".d.ts", ".mts", ".cts"];
 export function activate(context: vscode.ExtensionContext): void {
   const collection = vscode.languages.createDiagnosticCollection("jtc");
   context.subscriptions.push(collection);
+  context.subscriptions.push(
+    vscode.languages.registerDefinitionProvider(
+      [
+        { language: "json" },
+        { language: "jsonc" },
+        { language: "yaml" },
+      ],
+      {
+        provideDefinition(document, position) {
+          return buildDefinitionLinks(document, position);
+        },
+      },
+    ),
+  );
 
   const refresh = async (document: vscode.TextDocument): Promise<void> => {
     if (!isSupportedLanguage(document.languageId)) {
@@ -65,7 +77,10 @@ async function buildDiagnostics(
 ): Promise<vscode.Diagnostic[]> {
   try {
     if (!isSupportedLanguage(document.languageId)) return [];
-    const context = parseDocumentContext(document.languageId, document.getText());
+    const context = parseDocumentContext(
+      document.languageId,
+      document.getText(),
+    );
 
     const typePath = getTypePath(context.roughJson);
     if (!typePath) return [];
@@ -79,9 +94,9 @@ async function buildDiagnostics(
       preferFileSystemOnly: true,
     });
 
-    return mapDocumentDiagnostics(tsDiagnostics, context.pathToSpan).map((diagnostic) =>
-      toVsCodeDiagnostic(diagnostic, document)
-    );
+    return mapDocumentDiagnostics(tsDiagnostics, context.pathToSpan).map((
+      diagnostic,
+    ) => toVsCodeDiagnostic(diagnostic, document));
   } catch (err) {
     return [toInternalErrorDiagnostic(document, err)];
   }
@@ -92,7 +107,52 @@ type CheckRunOptions = {
   baseFilePath: string;
   fs?: CheckFileSystem;
   compilerOptions?: ts.CompilerOptions;
+  pathToUri?: Map<string, vscode.Uri>;
 };
+
+async function buildDefinitionLinks(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+): Promise<vscode.LocationLink[]> {
+  try {
+    if (!isSupportedLanguage(document.languageId)) return [];
+    const context = parseDocumentContext(
+      document.languageId,
+      document.getText(),
+    );
+    const typePath = getTypePath(context.roughJson);
+    if (!typePath) return [];
+
+    const path = context.offsetToPath(document.offsetAt(position));
+    if (!path || path.length === 0) return [];
+
+    const checkOptions = await createCheckOptions(document, typePath);
+    const target = findDefinition(path, checkOptions.typePath, {
+      baseFilePath: checkOptions.baseFilePath,
+      fs: checkOptions.fs,
+      compilerOptions: checkOptions.compilerOptions,
+      preferFileSystemOnly: true,
+    });
+    if (!target) return [];
+
+    const targetUri = targetPathToUri(target.filePath, checkOptions.pathToUri);
+    if (!targetUri) return [];
+
+    const targetDocument = await openTextDocument(targetUri);
+    if (!targetDocument) return [];
+
+    return [{
+      targetUri,
+      targetRange: spanToRange(targetDocument, target.targetSpan),
+      targetSelectionRange: spanToRange(
+        targetDocument,
+        target.targetSelectionSpan,
+      ),
+    }];
+  } catch {
+    return [];
+  }
+}
 
 async function createCheckOptions(
   document: vscode.TextDocument,
@@ -111,24 +171,28 @@ async function createCheckOptions(
     throw new Error(`Cannot resolve module in $type: ${parsed.modulePath}`);
   }
 
-  const allFiles = await collectTypeScriptFiles(moduleUri);
+  const collected = await collectTypeScriptFiles(moduleUri);
   const baseFilePath = uriToVirtualPath(document.uri);
-  const fs = createInMemoryFs(allFiles);
+  const fs = createInMemoryFs(collected.files);
   const typePathForCheck = `${uriToVirtualPath(moduleUri)}#${parsed.typeName}`;
   const compilerOptions = await loadCompilerOptionsFromTsconfig(document.uri);
+  const pathToUri = new Map(collected.pathToUri);
+  pathToUri.set(baseFilePath, document.uri);
 
   return {
     typePath: typePathForCheck,
     baseFilePath,
     fs,
     compilerOptions,
+    pathToUri,
   };
 }
 
 async function collectTypeScriptFiles(
   entryUri: vscode.Uri,
-): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
+): Promise<{ files: Map<string, string>; pathToUri: Map<string, vscode.Uri> }> {
+  const files = new Map<string, string>();
+  const pathToUri = new Map<string, vscode.Uri>();
   const queue: vscode.Uri[] = [entryUri];
   const seen = new Set<string>();
 
@@ -143,7 +207,9 @@ async function collectTypeScriptFiles(
     const text = await readTextFile(current);
     if (text == null) continue;
 
-    map.set(uriToVirtualPath(current), text);
+    const virtualPath = uriToVirtualPath(current);
+    files.set(virtualPath, text);
+    pathToUri.set(virtualPath, current);
 
     const references = collectReferencedSpecifiers(text);
     for (const specifier of references) {
@@ -154,7 +220,7 @@ async function collectTypeScriptFiles(
     }
   }
 
-  return map;
+  return { files, pathToUri };
 }
 
 function collectReferencedSpecifiers(text: string): string[] {
@@ -237,12 +303,13 @@ function createInMemoryFs(files: Map<string, string>): CheckFileSystem {
 
   const read = (path: string): string | undefined => {
     const normalized = normalizeFsPath(path);
-    return normalizedMap.get(normalized) ?? insensitiveMap.get(normalized.toLowerCase());
+    return normalizedMap.get(normalized) ??
+      insensitiveMap.get(normalized.toLowerCase());
   };
 
   const exists = (path: string): boolean => {
     return read(path) != null;
-  }
+  };
 
   return {
     fileExists(path: string): boolean {
@@ -352,6 +419,29 @@ function normalizeFsPath(path: string): string {
 
 function hasUriScheme(text: string): boolean {
   return /^[A-Za-z][A-Za-z0-9+.-]*:/.test(text);
+}
+
+async function openTextDocument(
+  uri: vscode.Uri,
+): Promise<vscode.TextDocument | undefined> {
+  const existing = vscode.workspace.textDocuments.find((item) =>
+    item.uri.toString() === uri.toString()
+  );
+  if (existing) return existing;
+
+  try {
+    return await vscode.workspace.openTextDocument(uri);
+  } catch {
+    return undefined;
+  }
+}
+
+function targetPathToUri(
+  filePath: string,
+  pathToUri?: Map<string, vscode.Uri>,
+): vscode.Uri | undefined {
+  const normalized = normalizeFsPath(filePath);
+  return pathToUri?.get(normalized) ?? vscode.Uri.file(filePath);
 }
 
 function toVsCodeDiagnostic(

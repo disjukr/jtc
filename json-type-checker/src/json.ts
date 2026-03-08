@@ -16,6 +16,11 @@ export function pathToSpan(node: Node, path: Path): Span {
   return currentSpan;
 }
 
+export function offsetToPath(node: Node, offset: number): Path | null {
+  if (!containsOffset(node, offset)) return null;
+  return findPathAtOffset(node, offset, []);
+}
+
 export function jsonTextToRoughJson(jsonText: string): RoughJson {
   const node = parseTree(jsonText);
   if (!node) return { type: "null" };
@@ -97,6 +102,61 @@ function getChildNode(
   }
 }
 
+function findPathAtOffset(node: Node, offset: number, basePath: Path): Path {
+  switch (node.type) {
+    case "object": {
+      for (const property of node.children ?? []) {
+        if (property.type !== "property") continue;
+
+        const keyNode = property.children?.[0];
+        const valueNode = property.children?.[1];
+        const key = String(keyNode?.value ?? "");
+        const nextPath = [...basePath, key];
+
+        if (keyNode && containsOffset(keyNode, offset)) {
+          return nextPath;
+        }
+
+        if (valueNode && containsOffset(valueNode, offset)) {
+          return findPathAtOffset(valueNode, offset, nextPath);
+        }
+
+        if (containsOffset(property, offset)) {
+          return nextPath;
+        }
+      }
+
+      return basePath;
+    }
+    case "array": {
+      for (const [index, child] of (node.children ?? []).entries()) {
+        if (!containsOffset(child, offset)) continue;
+        return findPathAtOffset(child, offset, [...basePath, index]);
+      }
+
+      return basePath;
+    }
+    case "property": {
+      const keyNode = node.children?.[0];
+      const valueNode = node.children?.[1];
+      const key = String(keyNode?.value ?? "");
+      const nextPath = [...basePath, key];
+
+      if (keyNode && containsOffset(keyNode, offset)) {
+        return nextPath;
+      }
+
+      if (valueNode && containsOffset(valueNode, offset)) {
+        return findPathAtOffset(valueNode, offset, nextPath);
+      }
+
+      return nextPath;
+    }
+    default:
+      return basePath;
+  }
+}
+
 function getNodeSpan(node: Node): Span {
   return { start: node.offset, end: node.offset + node.length };
 }
@@ -107,4 +167,8 @@ function getNumberText(node: Node, jsonText?: string): string {
     if (raw.length > 0) return raw;
   }
   return String(node.value);
+}
+
+function containsOffset(node: Node, offset: number): boolean {
+  return offset >= node.offset && offset < node.offset + node.length;
 }

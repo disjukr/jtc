@@ -1,14 +1,16 @@
-import { fromFileUrl } from "@std/path";
+import { fromFileUrl, toFileUrl } from "@std/path";
 import ts from "typescript";
 import {
   createConnection,
+  type DefinitionLink,
+  type Diagnostic,
   DiagnosticSeverity,
   ProposedFeatures,
   TextDocumentSyncKind,
-  type Diagnostic,
 } from "vscode-languageserver/node.js";
 import process from "node:process";
 import { check } from "../../json-type-checker/src/check.ts";
+import { findDefinition } from "../../json-type-checker/src/definition.ts";
 import {
   getTypePath,
   isSupportedLanguage,
@@ -39,6 +41,7 @@ export function runLsp(): void {
     return {
       capabilities: {
         textDocumentSync: TextDocumentSyncKind.Full,
+        definitionProvider: true,
       },
       serverInfo: {
         name: "jtc",
@@ -74,7 +77,21 @@ export function runLsp(): void {
 
   connection.onDidCloseTextDocument((event) => {
     openDocuments.delete(event.textDocument.uri);
-    connection.sendDiagnostics({ uri: event.textDocument.uri, diagnostics: [] });
+    connection.sendDiagnostics({
+      uri: event.textDocument.uri,
+      diagnostics: [],
+    });
+  });
+
+  connection.onDefinition(async (params) => {
+    const document = openDocuments.get(params.textDocument.uri);
+    if (!document) return null;
+    return await buildDefinitionLinks(
+      openDocuments,
+      document,
+      params.position.line,
+      params.position.character,
+    );
   });
 
   connection.onShutdown(() => {
@@ -118,8 +135,13 @@ async function buildDiagnostics(document: OpenDocument): Promise<Diagnostic[]> {
     if (!typePath) return [];
 
     const valueForCheck = omitTypeField(context.roughJson);
-    const tsDiagnostics = check(valueForCheck, typePath, { baseFilePath: filePath });
-    const mappedDiagnostics = mapDocumentDiagnostics(tsDiagnostics, context.pathToSpan);
+    const tsDiagnostics = check(valueForCheck, typePath, {
+      baseFilePath: filePath,
+    });
+    const mappedDiagnostics = mapDocumentDiagnostics(
+      tsDiagnostics,
+      context.pathToSpan,
+    );
 
     return mappedDiagnostics.map((item) => {
       return {
@@ -142,6 +164,51 @@ async function buildDiagnostics(document: OpenDocument): Promise<Diagnostic[]> {
         code: "jtc-internal",
       },
     ];
+  }
+}
+
+async function buildDefinitionLinks(
+  openDocuments: Map<string, OpenDocument>,
+  document: OpenDocument,
+  line: number,
+  character: number,
+): Promise<DefinitionLink[] | null> {
+  try {
+    if (!isSupportedLanguage(document.languageId)) return null;
+    const filePath = uriToFilePath(document.uri);
+    if (!filePath) return null;
+
+    const context = parseDocumentContext(document.languageId, document.text);
+    const typePath = getTypePath(context.roughJson);
+    if (!typePath) return null;
+
+    const offset = positionToOffset(document.text, line, character);
+    const path = context.offsetToPath(offset);
+    if (!path || path.length === 0) return null;
+
+    const target = findDefinition(path, typePath, { baseFilePath: filePath });
+    if (!target) return null;
+
+    const targetUri = toFileUrl(target.filePath).href;
+    const targetText = openDocuments.get(targetUri)?.text ??
+      await safeReadTextFile(target.filePath);
+    if (targetText == null) return null;
+
+    return [{
+      targetUri,
+      targetRange: spanToRange(
+        targetText,
+        target.targetSpan.start,
+        target.targetSpan.end,
+      ),
+      targetSelectionRange: spanToRange(
+        targetText,
+        target.targetSelectionSpan.start,
+        target.targetSelectionSpan.end,
+      ),
+    }];
+  } catch {
+    return null;
   }
 }
 
@@ -202,6 +269,31 @@ function spanToRange(
   };
 }
 
+function positionToOffset(
+  text: string,
+  line: number,
+  character: number,
+): number {
+  const safeLine = Math.max(0, line);
+  const safeCharacter = Math.max(0, character);
+  let currentLine = 0;
+  let index = 0;
+
+  while (index < text.length && currentLine < safeLine) {
+    if (text.charCodeAt(index) === 10) {
+      currentLine += 1;
+    }
+    index += 1;
+  }
+
+  let lineEnd = index;
+  while (lineEnd < text.length && text.charCodeAt(lineEnd) !== 10) {
+    lineEnd += 1;
+  }
+
+  return clamp(index + safeCharacter, index, lineEnd);
+}
+
 function offsetToPosition(
   text: string,
   offset: number,
@@ -225,4 +317,12 @@ function offsetToPosition(
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+async function safeReadTextFile(filePath: string): Promise<string | null> {
+  try {
+    return await Deno.readTextFile(filePath);
+  } catch {
+    return null;
+  }
 }

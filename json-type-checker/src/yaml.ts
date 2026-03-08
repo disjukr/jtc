@@ -24,6 +24,18 @@ export function pathToSpan(document: Document.Parsed, path: Path): Span {
   return currentSpan;
 }
 
+export function offsetToPath(
+  document: Document.Parsed,
+  offset: number,
+): Path | null {
+  const rootSpan = getYamlDocumentSpan(document);
+  if (rootSpan && !containsOffset(rootSpan, offset)) return null;
+
+  const root = document.contents;
+  if (!root) return [];
+  return findPathAtOffset(root, offset, []);
+}
+
 export function yamlTextToRoughJson(yamlText: string): RoughJson {
   const document = parseYamlDocument(yamlText, { keepSourceTokens: true });
   return nodeToRoughJson(document.contents);
@@ -173,6 +185,44 @@ function getChildNode(node: unknown, pathItem: string | number): unknown {
   return undefined;
 }
 
+function findPathAtOffset(node: unknown, offset: number, basePath: Path): Path {
+  if (isMap(node)) {
+    for (const pair of node.items) {
+      const key = keyToString(pair.key);
+      const nextPath = [...basePath, key];
+
+      const keySpan = getYamlNodeSpan(pair.key);
+      if (keySpan && containsOffset(keySpan, offset)) {
+        return nextPath;
+      }
+
+      const valueSpan = getYamlNodeSpan(pair.value);
+      if (valueSpan && containsOffset(valueSpan, offset)) {
+        return findPathAtOffset(pair.value, offset, nextPath);
+      }
+
+      const pairSpan = getYamlNodeSpan(pair) ?? getYamlNodeRangeSpan(pair);
+      if (pairSpan && containsOffset(pairSpan, offset)) {
+        return nextPath;
+      }
+    }
+
+    return basePath;
+  }
+
+  if (isSeq(node)) {
+    for (const [index, item] of node.items.entries()) {
+      const itemSpan = getYamlNodeSpan(item);
+      if (!itemSpan || !containsOffset(itemSpan, offset)) continue;
+      return findPathAtOffset(item, offset, [...basePath, index]);
+    }
+
+    return basePath;
+  }
+
+  return basePath;
+}
+
 function getYamlNodeSpan(node: unknown): Span | undefined {
   const sourceToken = getYamlSourceToken(node);
   if (sourceToken) {
@@ -216,4 +266,15 @@ function getYamlNodeRange(node: unknown): [number, number] | undefined {
   if (typeof start !== "number" || typeof end !== "number") return;
   if (end < start) return;
   return [start, end];
+}
+
+function getYamlNodeRangeSpan(node: unknown): Span | undefined {
+  const range = getYamlNodeRange(node);
+  if (!range) return;
+  const [start, end] = range;
+  return { start, end };
+}
+
+function containsOffset(span: Span, offset: number): boolean {
+  return offset >= span.start && offset < span.end;
 }
