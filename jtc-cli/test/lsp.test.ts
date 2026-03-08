@@ -108,6 +108,56 @@ Deno.test("jtc lsp resolves definitions for json fields", async () => {
   }
 });
 
+Deno.test("jtc lsp uses open TypeScript documents for definition spans", async () => {
+  const client = await startLspClient();
+  try {
+    const jsonPath = join(FIXTURES_DIR, "valid.json");
+    const jsonUri = toFileUrl(jsonPath).href;
+    const jsonText = await Deno.readTextFile(jsonPath);
+    const typesPath = join(FIXTURES_DIR, "types.ts");
+    const typesUri = toFileUrl(typesPath).href;
+    const typesText = `\n${await Deno.readTextFile(typesPath)}`;
+
+    client.connection.sendNotification(DidOpenTextDocumentNotification.type, {
+      textDocument: {
+        uri: typesUri,
+        languageId: "typescript",
+        version: 1,
+        text: typesText,
+      },
+    });
+
+    client.connection.sendNotification(DidOpenTextDocumentNotification.type, {
+      textDocument: {
+        uri: jsonUri,
+        languageId: "json",
+        version: 1,
+        text: jsonText,
+      },
+    });
+
+    const definition = await client.connection.sendRequest(
+      DefinitionRequest.type,
+      {
+        textDocument: { uri: jsonUri },
+        position: { line: 2, character: 3 },
+      },
+    );
+
+    assert(Array.isArray(definition));
+    assertEquals(definition.length, 1);
+    assert(isLocationLink(definition[0]));
+    if (!isLocationLink(definition[0])) {
+      throw new Error("expected LocationLink response");
+    }
+    assertEquals(definition[0].targetSelectionRange.start.line, 2);
+    assertEquals(definition[0].targetSelectionRange.start.character, 2);
+  } finally {
+    const code = await stopLspClient(client);
+    assertEquals(code, 0);
+  }
+});
+
 Deno.test("jtc lsp publishes diagnostics for invalid json document", async () => {
   const client = await startLspClient();
   try {

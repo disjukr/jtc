@@ -9,7 +9,10 @@ import {
   TextDocumentSyncKind,
 } from "vscode-languageserver/node.js";
 import process from "node:process";
-import { check } from "../../json-type-checker/src/check.ts";
+import {
+  check,
+  type CheckFileSystem,
+} from "../../json-type-checker/src/check.ts";
 import { findDefinition } from "../../json-type-checker/src/definition.ts";
 import {
   getTypePath,
@@ -177,6 +180,7 @@ async function buildDefinitionLinks(
     if (!isSupportedLanguage(document.languageId)) return null;
     const filePath = uriToFilePath(document.uri);
     if (!filePath) return null;
+    const fs = createOpenDocumentOverlayFs(openDocuments);
 
     const context = parseDocumentContext(document.languageId, document.text);
     const typePath = getTypePath(context.roughJson);
@@ -186,12 +190,14 @@ async function buildDefinitionLinks(
     const path = context.offsetToPath(offset);
     if (!path || path.length === 0) return null;
 
-    const target = findDefinition(path, typePath, { baseFilePath: filePath });
+    const target = findDefinition(path, typePath, {
+      baseFilePath: filePath,
+      fs,
+    });
     if (!target) return null;
 
     const targetUri = toFileUrl(target.filePath).href;
-    const targetText = openDocuments.get(targetUri)?.text ??
-      await safeReadTextFile(target.filePath);
+    const targetText = fs.readFile(target.filePath);
     if (targetText == null) return null;
 
     return [{
@@ -319,10 +325,39 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-async function safeReadTextFile(filePath: string): Promise<string | null> {
-  try {
-    return await Deno.readTextFile(filePath);
-  } catch {
-    return null;
+function createOpenDocumentOverlayFs(
+  openDocuments: Map<string, OpenDocument>,
+): CheckFileSystem {
+  const openFileTexts = new Map<string, string>();
+
+  for (const document of openDocuments.values()) {
+    const filePath = uriToFilePath(document.uri);
+    if (!filePath) continue;
+    openFileTexts.set(pathKey(filePath), document.text);
   }
+
+  return {
+    fileExists(filePath: string): boolean {
+      if (openFileTexts.has(pathKey(filePath))) return true;
+      try {
+        return Deno.statSync(filePath).isFile;
+      } catch {
+        return false;
+      }
+    },
+    readFile(filePath: string): string | undefined {
+      const openText = openFileTexts.get(pathKey(filePath));
+      if (openText != null) return openText;
+      try {
+        return Deno.readTextFileSync(filePath);
+      } catch {
+        return undefined;
+      }
+    },
+  };
+}
+
+function pathKey(filePath: string): string {
+  const normalized = filePath.replaceAll("\\", "/");
+  return Deno.build.os === "windows" ? normalized.toLowerCase() : normalized;
 }

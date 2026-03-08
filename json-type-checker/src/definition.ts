@@ -79,7 +79,7 @@ export function findDefinition(
         ),
       );
       if (nextTypes.length === 0) {
-        return symbolsToDefinition(lastSymbols);
+        return null;
       }
       currentTypes = nextTypes;
       continue;
@@ -89,7 +89,7 @@ export function findDefinition(
       resolvePropertyMatches(checker, type, item)
     );
     if (matches.length === 0) {
-      return symbolsToDefinition(lastSymbols);
+      return null;
     }
 
     lastSymbols = dedupeSymbols(matches.map((item) => item.symbol));

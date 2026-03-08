@@ -75,6 +75,35 @@ Deno.test("findDefinition resolves $type to the root type declaration", async ()
   }
 });
 
+Deno.test("findDefinition returns null for unresolved nested path segments", async () => {
+  const tempDir = await Deno.makeTempDir();
+
+  try {
+    const typesPath = join(tempDir, "types.ts");
+    const jsonPath = join(tempDir, "config.json");
+    await Deno.writeTextFile(
+      typesPath,
+      `export interface Profile {
+  name: string;
+}
+
+export interface User {
+  profile: Profile;
+}
+`,
+    );
+    await Deno.writeTextFile(jsonPath, "{}");
+
+    const target = findDefinition(["profile", "nickname"], "./types.ts#User", {
+      baseFilePath: jsonPath,
+    });
+
+    assertEquals(target, null);
+  } finally {
+    await Deno.remove(tempDir, { recursive: true });
+  }
+});
+
 Deno.test("findDefinition resolves nested object members through array paths", async () => {
   const tempDir = await Deno.makeTempDir();
 
