@@ -2047,6 +2047,7 @@
       "json-type-checker": {
         "dependencies": [
           "jsr:@cliffy/command@1.0.0-rc.7",
+          "jsr:@std/assert@1",
           "jsr:@std/fs@1",
           "jsr:@std/path@1",
           "npm:jsonc-parser@3",
