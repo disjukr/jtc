@@ -91,7 +91,7 @@ async function buildDiagnostics(
       baseFilePath: checkOptions.baseFilePath,
       fs: checkOptions.fs,
       compilerOptions: checkOptions.compilerOptions,
-      preferFileSystemOnly: true,
+      preferFileSystemOnly: checkOptions.preferFileSystemOnly,
     });
 
     return mapDocumentDiagnostics(tsDiagnostics, context.pathToSpan).map((
@@ -108,6 +108,7 @@ type CheckRunOptions = {
   fs?: CheckFileSystem;
   compilerOptions?: ts.CompilerOptions;
   pathToUri?: Map<string, vscode.Uri>;
+  preferFileSystemOnly?: boolean;
 };
 
 async function buildDefinitionLinks(
@@ -131,7 +132,7 @@ async function buildDefinitionLinks(
       baseFilePath: checkOptions.baseFilePath,
       fs: checkOptions.fs,
       compilerOptions: checkOptions.compilerOptions,
-      preferFileSystemOnly: true,
+      preferFileSystemOnly: checkOptions.preferFileSystemOnly,
     });
     if (!target) return [];
 
@@ -159,9 +160,13 @@ async function createCheckOptions(
   typePath: string,
 ): Promise<CheckRunOptions> {
   if (document.uri.scheme === "file") {
+    const compilerOptions = await loadCompilerOptionsFromTsconfig(document.uri);
     return {
       typePath,
       baseFilePath: document.uri.fsPath,
+      fs: createOpenDocumentOverlayFs(),
+      compilerOptions,
+      preferFileSystemOnly: false,
     };
   }
 
@@ -185,6 +190,7 @@ async function createCheckOptions(
     fs,
     compilerOptions,
     pathToUri,
+    preferFileSystemOnly: true,
   };
 }
 
@@ -327,6 +333,24 @@ function createInMemoryFs(files: Map<string, string>): CheckFileSystem {
         if (parent === current) break;
         current = parent;
       }
+    },
+  };
+}
+
+function createOpenDocumentOverlayFs(): CheckFileSystem {
+  const openFiles = new Map<string, string>();
+
+  for (const document of vscode.workspace.textDocuments) {
+    if (document.uri.scheme !== "file") continue;
+    openFiles.set(normalizeFsPath(document.uri.fsPath), document.getText());
+  }
+
+  return {
+    fileExists(path: string): boolean {
+      return openFiles.has(normalizeFsPath(path));
+    },
+    readFile(path: string): string | undefined {
+      return openFiles.get(normalizeFsPath(path));
     },
   };
 }
